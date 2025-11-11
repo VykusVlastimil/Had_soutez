@@ -1,0 +1,12 @@
+Snake soutěž 
+
+hra-snake
+-monogame + objektove
++min.1 další třída
++min.1 rozhraní 
+
+napady:
+had se bude pohybovat za kursorem a když bude blizko tak ho kouske a když bude daleko tak se bude pohybovat jak chce.
+bludiste 
+had bude auto a bude rizen volantem dole kde se bude na nej drzet misi a otáček plus ještě radici paka kde se bude muset radit a pedal na plyn je mezernik 
+had okrada banku 
