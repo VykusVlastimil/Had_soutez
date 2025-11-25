@@ -22,11 +22,11 @@ namespace Snake_soutez
         private float _timer;
         private const float MOVE_DELAY = 0.1f;
 
-        // Game constants
+     w   // Game constants
         private const int CELL_SIZE = 20;
-        private const int GRID_WIDTH = 2000; // ŠIRŠÍ MAPA NA ŠÍŘKU
-        private const int GRID_HEIGHT = 54; // 1080 / 20 = 54
-        private const int WIN_FOOD_COUNT = 15; // Výhra po 15 jablkách
+        private const int GRID_WIDTH = 2000; 
+        private const int GRID_HEIGHT = 54; 
+        private const int WIN_FOOD_COUNT = 15; 
         private int _foodEaten = 0;
 
         // Vehicle controls
