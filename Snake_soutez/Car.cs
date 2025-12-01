@@ -1,6 +1,4 @@
 using Microsoft.Xna.Framework;
-using Snake_soutez;
-using System;
 
 namespace Snake_soutez
 {
@@ -11,10 +9,10 @@ namespace Snake_soutez
         public int CurrentGear { get; private set; }
         public float Rotation { get; private set; }
 
-        private readonly float[] _gearMaxSpeeds = { 0f, 0.3f, 0.6f, 0.9f }; // ZPOMALENO
-        private readonly float _acceleration = 0.08f; // ZPOMALENO
-        private readonly float _deceleration = 0.05f;
-        private readonly float _steeringSpeed = 0.02f; // ZPOMALENO
+        private readonly float[] _gearMaxSpeeds = { 0f, 0.8f, 1.6f, 2.4f };
+        private readonly float _acceleration = 0.1f;
+        private readonly float _deceleration = 0.07f;
+        private readonly float _steeringSpeed = 0.03f;
 
         public Car(Vector2 startPosition)
         {
@@ -31,7 +29,7 @@ namespace Snake_soutez
 
         public void Turn(float direction)
         {
-            Rotation += direction * _steeringSpeed * (Speed + 0.1f);
+            Rotation += direction * _steeringSpeed * MathHelper.Clamp(Speed * 0.3f, 0.1f, 1f);
         }
 
         public void ShiftGear(int gear)
@@ -44,10 +42,11 @@ namespace Snake_soutez
 
         public void Update(GameTime gameTime)
         {
-            Speed = MathHelper.Lerp(Speed, 0, _deceleration);
+            float deltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            Speed = MathHelper.Lerp(Speed, 0, _deceleration * deltaTime * 60f);
 
-            Vector2 direction = new Vector2((float)Math.Cos(Rotation), (float)Math.Sin(Rotation));
-            Position += direction * Speed;
+            Vector2 direction = new Vector2((float)System.Math.Cos(Rotation), (float)System.Math.Sin(Rotation));
+            Position += direction * Speed * deltaTime * 60f;
         }
     }
 }

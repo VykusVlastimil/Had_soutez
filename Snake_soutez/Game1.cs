@@ -1,7 +1,6 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
-using Snake_soutez;
 using System;
 using System.Collections.Generic;
 
@@ -11,22 +10,24 @@ namespace Snake_soutez
     {
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
+        private Texture2D _pixelTexture;
 
         // Game objects
         private List<Vector2> _snake;
-        private Vector2 _food;
+        private List<Vector2> _foods; // Změněno na více jablek
         private bool _gameOver;
         private bool _victory;
 
         // Timing
         private float _timer;
-        private const float MOVE_DELAY = 0.1f;
+        private const float MOVE_DELAY = 0.15f; // Zvýšeno pro lepší výkon
 
-     w   // Game constants
+        // Game constants
         private const int CELL_SIZE = 20;
-        private const int GRID_WIDTH = 2000; 
-        private const int GRID_HEIGHT = 54; 
-        private const int WIN_FOOD_COUNT = 15; 
+        private const int GRID_WIDTH = 150;
+        private const int GRID_HEIGHT = 54;
+        private const int WIN_FOOD_COUNT = 15;
+        private const int MAX_FOOD_COUNT = 30; // Maximálně 30 jablek na mapě
         private int _foodEaten = 0;
 
         // Vehicle controls
@@ -37,6 +38,7 @@ namespace Snake_soutez
 
         // Obstacles
         private List<Vector2> _obstacles;
+        private HashSet<Point> _obstacleHashSet; // Pro rychlejší kontrolu kolizí
 
         // Mouse steering
         private bool _isMouseDragging = false;
@@ -67,64 +69,103 @@ namespace Snake_soutez
         private void ResetGame()
         {
             _snake = new List<Vector2> { new Vector2(10, GRID_HEIGHT / 2) };
-            _vehicle = new Car(new Vector2(10, GRID_HEIGHT / 2));
+            _vehicle = new Car(new Vector2(10, GRID_HEIGHT / 2) * CELL_SIZE);
             _gameOver = false;
             _victory = false;
             _timer = 0f;
             _steeringWheel = 0f;
             _foodEaten = 0;
             _cameraPosition = Vector2.Zero;
+            _obstacleHashSet = new HashSet<Point>();
             GenerateObstacles();
-            SpawnFood();
+            GenerateFoods();
         }
 
         private void GenerateObstacles()
         {
             _obstacles = new List<Vector2>();
+            _obstacleHashSet.Clear();
             Random rand = new Random();
 
-            // Vytvoříme několik překážek v různých částech mapy
-            for (int i = 0; i < 50; i++)
+            // Zmenšen počet překážek pro lepší výkon
+            for (int i = 0; i < 30; i++)
             {
                 Vector2 obstacle = new Vector2(
                     rand.Next(20, GRID_WIDTH - 20),
                     rand.Next(5, GRID_HEIGHT - 5)
                 );
 
-                // Zajistíme, aby překážka nebyla na startovní pozici
                 float distanceFromStart = Vector2.Distance(obstacle, new Vector2(10, GRID_HEIGHT / 2));
-                if (distanceFromStart > 15 && !_obstacles.Contains(obstacle))
+                if (distanceFromStart > 20 && !_obstacleHashSet.Contains(new Point((int)obstacle.X, (int)obstacle.Y)))
                 {
                     _obstacles.Add(obstacle);
+                    _obstacleHashSet.Add(new Point((int)obstacle.X, (int)obstacle.Y));
                 }
             }
         }
 
-        private void SpawnFood()
+        private void GenerateFoods()
         {
-            var possiblePositions = new List<Vector2>();
+            _foods = new List<Vector2>();
+            Random rand = new Random();
 
-            for (int x = 0; x < GRID_WIDTH; x++)
+            // Generujeme více jablek
+            for (int i = 0; i < MAX_FOOD_COUNT; i++)
             {
-                for (int y = 0; y < GRID_HEIGHT; y++)
+                int attempts = 0;
+                bool placed = false;
+
+                while (!placed && attempts < 100)
                 {
-                    var pos = new Vector2(x, y);
-                    if (!_snake.Contains(pos) && !_obstacles.Contains(pos))
+                    attempts++;
+                    Vector2 food = new Vector2(
+                        rand.Next(0, GRID_WIDTH),
+                        rand.Next(0, GRID_HEIGHT)
+                    );
+
+                    float distanceFromStart = Vector2.Distance(food, new Vector2(10, GRID_HEIGHT / 2));
+
+                    // Kontrola, zda je pozice volná
+                    bool positionFree = true;
+                    Point foodPoint = new Point((int)food.X, (int)food.Y);
+
+                    if (_obstacleHashSet.Contains(foodPoint))
+                        positionFree = false;
+
+                    foreach (var segment in _snake)
                     {
-                        possiblePositions.Add(pos);
+                        if (Vector2.Distance(food, segment) < 2)
+                        {
+                            positionFree = false;
+                            break;
+                        }
+                    }
+
+                    foreach (var existingFood in _foods)
+                    {
+                        if (Vector2.Distance(food, existingFood) < 3)
+                        {
+                            positionFree = false;
+                            break;
+                        }
+                    }
+
+                    if (positionFree && distanceFromStart > 15)
+                    {
+                        _foods.Add(food);
+                        placed = true;
                     }
                 }
-            }
-
-            if (possiblePositions.Count > 0)
-            {
-                _food = possiblePositions[Random.Shared.Next(possiblePositions.Count)];
             }
         }
 
         protected override void LoadContent()
         {
             _spriteBatch = new SpriteBatch(GraphicsDevice);
+
+            // Vytvoření jednopixelové textury jednou
+            _pixelTexture = new Texture2D(GraphicsDevice, 1, 1);
+            _pixelTexture.SetData(new[] { Color.White });
         }
 
         protected override void Update(GameTime gameTime)
@@ -149,24 +190,29 @@ namespace Snake_soutez
                 _timer = 0f;
 
                 Vector2 newHead = new Vector2(
-                    (int)(_vehicle.Position.X + 0.5f),
-                    (int)(_vehicle.Position.Y + 0.5f)
+                    _vehicle.Position.X / CELL_SIZE,
+                    _vehicle.Position.Y / CELL_SIZE
                 );
 
-                // Kontrola kolizí - POUZE HLAVA
-                if (newHead.X < 0 || newHead.X >= GRID_WIDTH ||
-                    newHead.Y < 0 || newHead.Y >= GRID_HEIGHT ||
-                    _obstacles.Contains(newHead))
+                Point gridHead = new Point(
+                    (int)(newHead.X + 0.5f),
+                    (int)(newHead.Y + 0.5f)
+                );
+
+                // Rychlejší kontrola kolizí s překážkami
+                if (gridHead.X < 0 || gridHead.X >= GRID_WIDTH ||
+                    gridHead.Y < 0 || gridHead.Y >= GRID_HEIGHT ||
+                    _obstacleHashSet.Contains(gridHead))
                 {
                     _gameOver = true;
                     _victory = false;
                     return;
                 }
 
-                // Kontrola kolize hlavy s tělem (kromě prvního segmentu za hlavou)
+                // Kontrola kolize hlavy s tělem
                 for (int i = 1; i < _snake.Count; i++)
                 {
-                    if (_snake[i] == newHead)
+                    if (Vector2.Distance(newHead, _snake[i]) < 0.8f)
                     {
                         _gameOver = true;
                         _victory = false;
@@ -176,38 +222,96 @@ namespace Snake_soutez
 
                 _snake.Insert(0, newHead);
 
-                // Kontrola jablka
-                if (newHead == _food)
+                // Kontrola sbírání jablek
+                bool ateFood = false;
+                for (int i = _foods.Count - 1; i >= 0; i--)
                 {
-                    _foodEaten++;
-                    if (_foodEaten >= WIN_FOOD_COUNT)
+                    if (Vector2.Distance(newHead, _foods[i]) < 0.8f)
                     {
-                        _victory = true;
-                        _gameOver = true;
-                    }
-                    else
-                    {
-                        SpawnFood();
+                        _foods.RemoveAt(i);
+                        _foodEaten++;
+                        ateFood = true;
+
+                        if (_foodEaten >= WIN_FOOD_COUNT)
+                        {
+                            _victory = true;
+                            _gameOver = true;
+                            return;
+                        }
+                        break;
                     }
                 }
-                else
+
+                if (!ateFood && _snake.Count > 1)
                 {
-                    // Odstraníme ocas pouze když nesbíráme jablko
-                    if (_snake.Count > 1)
-                    {
-                        _snake.RemoveAt(_snake.Count - 1);
-                    }
+                    _snake.RemoveAt(_snake.Count - 1);
+                }
+
+                // Pokud je málo jablek, přidáme nová
+                if (_foods.Count < MAX_FOOD_COUNT / 2)
+                {
+                    AddMoreFood();
                 }
             }
 
             base.Update(gameTime);
         }
 
+        private void AddMoreFood()
+        {
+            Random rand = new Random();
+            int toAdd = MAX_FOOD_COUNT - _foods.Count;
+
+            for (int i = 0; i < toAdd; i++)
+            {
+                int attempts = 0;
+                bool placed = false;
+
+                while (!placed && attempts < 50)
+                {
+                    attempts++;
+                    Vector2 food = new Vector2(
+                        rand.Next(0, GRID_WIDTH),
+                        rand.Next(0, GRID_HEIGHT)
+                    );
+
+                    bool positionFree = true;
+                    Point foodPoint = new Point((int)food.X, (int)food.Y);
+
+                    if (_obstacleHashSet.Contains(foodPoint))
+                        positionFree = false;
+
+                    foreach (var segment in _snake)
+                    {
+                        if (Vector2.Distance(food, segment) < 2)
+                        {
+                            positionFree = false;
+                            break;
+                        }
+                    }
+
+                    foreach (var existingFood in _foods)
+                    {
+                        if (Vector2.Distance(food, existingFood) < 3)
+                        {
+                            positionFree = false;
+                            break;
+                        }
+                    }
+
+                    if (positionFree)
+                    {
+                        _foods.Add(food);
+                        placed = true;
+                    }
+                }
+            }
+        }
+
         private void HandleVehicleControls(GameTime gameTime)
         {
             MouseState mouseState = Mouse.GetState();
 
-            // Kliknutí a tažení myší pro volant
             if (mouseState.LeftButton == ButtonState.Pressed)
             {
                 if (!_isMouseDragging)
@@ -224,10 +328,9 @@ namespace Snake_soutez
             else
             {
                 _isMouseDragging = false;
-                _steeringWheel = MathHelper.Lerp(_steeringWheel, 0, 0.2f);
+                _steeringWheel = MathHelper.Lerp(_steeringWheel, 0, 0.15f);
             }
 
-            // Řazení (1-3)
             for (int i = 0; i < _gearKeys.Length; i++)
             {
                 if (Keyboard.GetState().IsKeyDown(_gearKeys[i]))
@@ -236,7 +339,6 @@ namespace Snake_soutez
                 }
             }
 
-            // Plyn (Mezerník)
             float acceleration = Keyboard.GetState().IsKeyDown(Keys.Space) ? 1.0f : 0.0f;
 
             _vehicle.Turn(_steeringWheel);
@@ -246,11 +348,9 @@ namespace Snake_soutez
 
         private void UpdateCamera()
         {
-            // Kamera sleduje auto s mírným předstihem
-            Vector2 targetCamera = _vehicle.Position * CELL_SIZE - new Vector2(1920 / 2, 1080 / 2);
-            _cameraPosition = Vector2.Lerp(_cameraPosition, targetCamera, 0.1f);
+            Vector2 targetCamera = _vehicle.Position - new Vector2(1920 / 2, 1080 / 2);
+            _cameraPosition = Vector2.Lerp(_cameraPosition, targetCamera, 0.08f);
 
-            // Omezení kamery na hranice mapy
             _cameraPosition.X = MathHelper.Clamp(_cameraPosition.X, 0, GRID_WIDTH * CELL_SIZE - 1920);
             _cameraPosition.Y = MathHelper.Clamp(_cameraPosition.Y, 0, GRID_HEIGHT * CELL_SIZE - 1080);
         }
@@ -261,10 +361,9 @@ namespace Snake_soutez
 
             _spriteBatch.Begin();
 
-            // Vypočítáme pozici pro kreslení s kamerou
             Vector2 cameraOffset = -_cameraPosition;
 
-            // Kreslení překážek (ŽLUTÉ)
+            // Kreslení překážek
             foreach (var obstacle in _obstacles)
             {
                 DrawRectangle(
@@ -273,12 +372,12 @@ namespace Snake_soutez
                     CELL_SIZE, CELL_SIZE, Color.Yellow);
             }
 
-            // Kreslení hada (tělo se táhne za hlavou)
+            // Kreslení hada - optimalizované
             for (int i = 0; i < _snake.Count; i++)
             {
-                Color segmentColor = i == 0 ? Color.Lime : Color.Green; // Hlava světlejší
-                float scale = 1.0f - (i * 0.02f); // Tělo se postupně zmenšuje
-                scale = Math.Max(scale, 0.6f);
+                float progress = (float)i / _snake.Count;
+                Color segmentColor = Color.Lerp(Color.Lime, Color.DarkGreen, progress * 0.7f);
+                float scale = 1.0f - (progress * 0.4f);
 
                 DrawRectangle(
                     (int)(_snake[i].X * CELL_SIZE + cameraOffset.X + (CELL_SIZE * (1 - scale)) / 2),
@@ -286,16 +385,16 @@ namespace Snake_soutez
                     (int)(CELL_SIZE * scale), (int)(CELL_SIZE * scale), segmentColor);
             }
 
-            // Kreslení jablka
-            if (!_gameOver)
+            // Kreslení jablek
+            foreach (var food in _foods)
             {
                 DrawRectangle(
-                    (int)(_food.X * CELL_SIZE + cameraOffset.X),
-                    (int)(_food.Y * CELL_SIZE + cameraOffset.Y),
+                    (int)(food.X * CELL_SIZE + cameraOffset.X),
+                    (int)(food.Y * CELL_SIZE + cameraOffset.Y),
                     CELL_SIZE, CELL_SIZE, Color.Red);
             }
 
-            // Kreslení UI (stále na pevné pozici)
+            // Kreslení UI
             DrawUI();
 
             // Kreslení konce hry
@@ -323,16 +422,20 @@ namespace Snake_soutez
             int wheelY = _graphics.PreferredBackBufferHeight - 150;
             int wheelSize = 120;
 
-            // Podstava volantu
             DrawRectangle(wheelX, wheelY, wheelSize, wheelSize, Color.DarkGray);
 
-            // Ukazatel volantu
             float wheelAngle = _steeringWheel / MAX_STEERING * 45;
             Vector2 center = new Vector2(wheelX + wheelSize / 2, wheelY + wheelSize / 2);
             Vector2 indicator = new Vector2(0, -wheelSize / 3);
-            indicator = RotateVector(indicator, MathHelper.ToRadians(wheelAngle));
 
-            DrawLine(center, center + indicator, 8, Color.White);
+            float cos = (float)Math.Cos(MathHelper.ToRadians(wheelAngle));
+            float sin = (float)Math.Sin(MathHelper.ToRadians(wheelAngle));
+            Vector2 rotatedIndicator = new Vector2(
+                indicator.X * cos - indicator.Y * sin,
+                indicator.X * sin + indicator.Y * cos
+            );
+
+            DrawLine(center, center + rotatedIndicator, 8, Color.White);
 
             // Převodovka
             int gearX = 300;
@@ -346,38 +449,34 @@ namespace Snake_soutez
             // Rychloměr
             int speedX = 500;
             int speedY = _graphics.PreferredBackBufferHeight - 100;
-            DrawRectangle(speedX, speedY, (int)(_vehicle.Speed * 100), 60, Color.Blue);
+            int speedWidth = (int)(MathHelper.Clamp(_vehicle.Speed / 2.4f, 0, 1) * 100);
+            DrawRectangle(speedX, speedY, speedWidth, 60, Color.Blue);
 
             // Počet snědených jablek
             int foodX = 700;
             int foodY = _graphics.PreferredBackBufferHeight - 80;
             for (int i = 0; i < WIN_FOOD_COUNT; i++)
             {
-                Color appleColor = i < _foodEaten ? Color.Red : Color.DarkRed;
+                Color appleColor = i < _foodEaten ? Color.Red : new Color(80, 0, 0);
                 DrawRectangle(foodX + i * 25, foodY, 20, 20, appleColor);
             }
 
-            // Textové informace (bez fontu, použijeme obdélníky)
-            DrawRectangle(100, 50, 200, 40, new Color(0, 0, 0, 128));
-            DrawRectangle(100, 100, 150, 30, new Color(0, 0, 0, 128));
+            // Informace
+            DrawRectangle(100, 50, 250, 80, new Color(0, 0, 0, 128));
         }
 
         private void DrawRectangle(int x, int y, int width, int height, Color color)
         {
-            var texture = new Texture2D(GraphicsDevice, 1, 1);
-            texture.SetData(new[] { color });
-            _spriteBatch.Draw(texture, new Rectangle(x, y, width, height), color);
+            // Použití předem vytvořené textury
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, width, height), color);
         }
 
         private void DrawLine(Vector2 start, Vector2 end, int thickness, Color color)
         {
-            var texture = new Texture2D(GraphicsDevice, 1, 1);
-            texture.SetData(new[] { color });
-
             Vector2 edge = end - start;
             float angle = (float)Math.Atan2(edge.Y, edge.X);
 
-            _spriteBatch.Draw(texture,
+            _spriteBatch.Draw(_pixelTexture,
                 new Rectangle((int)start.X, (int)start.Y, (int)edge.Length(), thickness),
                 null,
                 color,
@@ -386,20 +485,9 @@ namespace Snake_soutez
                 SpriteEffects.None, 0);
         }
 
-        private Vector2 RotateVector(Vector2 vector, float angle)
-        {
-            return new Vector2(
-                vector.X * (float)Math.Cos(angle) - vector.Y * (float)Math.Sin(angle),
-                vector.X * (float)Math.Sin(angle) + vector.Y * (float)Math.Cos(angle)
-            );
-        }
-
         private void DrawTriangle(int x1, int y1, int x2, int y2, int x3, int y3, Color color)
         {
-            var texture = new Texture2D(GraphicsDevice, 1, 1);
-            texture.SetData(new[] { color });
-
-            // Jednodušší trojúhelník - vykreslíme 3 čáry
+            // Jednodušší trojúhelník - pouze obrys
             DrawLine(new Vector2(x1, y1), new Vector2(x2, y2), 3, color);
             DrawLine(new Vector2(x2, y2), new Vector2(x3, y3), 3, color);
             DrawLine(new Vector2(x3, y3), new Vector2(x1, y1), 3, color);
