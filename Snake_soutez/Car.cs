@@ -8,23 +8,29 @@ namespace Snake_soutez
         public float Speed { get; private set; }
         public int CurrentGear { get; private set; }
         public float Rotation { get; private set; }
+        public float MaxSpeed { get; private set; }
 
-        private readonly float[] _gearMaxSpeeds = { 0f, 0.8f, 1.6f, 2.4f };
-        private readonly float _acceleration = 0.1f;
-        private readonly float _deceleration = 0.07f;
-        private readonly float _steeringSpeed = 0.03f;
+        public float[] GearMaxSpeeds { get; private set; }
+
+        private readonly float _baseAcceleration = 0.1f;
+        private readonly float _deceleration = 0.08f;
+        private readonly float _steeringSpeed = 0.025f;
+        private float _speedBonus;
 
         public Car(Vector2 startPosition)
         {
             Position = startPosition;
             CurrentGear = 1;
             Rotation = 0f;
+            GearMaxSpeeds = new float[] { 0f, 1.0f, 2.0f, 3.0f };
+            MaxSpeed = GearMaxSpeeds[CurrentGear];
+            _speedBonus = 0f;
         }
 
         public void Accelerate(float power)
         {
-            float targetSpeed = _gearMaxSpeeds[CurrentGear] * power;
-            Speed = MathHelper.Lerp(Speed, targetSpeed, _acceleration);
+            float targetSpeed = (MaxSpeed + _speedBonus) * power;
+            Speed = MathHelper.Lerp(Speed, targetSpeed, _baseAcceleration);
         }
 
         public void Turn(float direction)
@@ -34,10 +40,17 @@ namespace Snake_soutez
 
         public void ShiftGear(int gear)
         {
-            if (gear >= 0 && gear < _gearMaxSpeeds.Length)
+            if (gear >= 0 && gear < GearMaxSpeeds.Length)
             {
                 CurrentGear = gear;
+                MaxSpeed = GearMaxSpeeds[CurrentGear] + _speedBonus;
             }
+        }
+
+        public void IncreaseSpeed(float amount)
+        {
+            _speedBonus += amount;
+            MaxSpeed = GearMaxSpeeds[CurrentGear] + _speedBonus;
         }
 
         public void Update(GameTime gameTime)

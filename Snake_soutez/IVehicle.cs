@@ -8,9 +8,11 @@ namespace Snake_soutez
         void Turn(float direction);
         void ShiftGear(int gear);
         void Update(GameTime gameTime);
+        void IncreaseSpeed(float amount);
         Vector2 Position { get; }
         float Speed { get; }
         int CurrentGear { get; }
         float Rotation { get; }
+        float MaxSpeed { get; }
     }
 }
